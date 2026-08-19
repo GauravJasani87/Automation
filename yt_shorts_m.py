@@ -12,7 +12,7 @@ from moviepy import VideoFileClip, TextClip, CompositeVideoClip, ImageClip
 # ---- Customize your emoji watermark here ----
 EMOJI = "🎬😎😀"
 EMOJI_SIZE = 45            # pixel size of each emoji glyph
-EMOJI_BOTTOM_MARGIN = 60   # distance from the bottom edge of the video
+EMOJI_BOTTOM_MARGIN = 30   # distance from the bottom edge of the video
 
 
 def configure_ffmpeg():
