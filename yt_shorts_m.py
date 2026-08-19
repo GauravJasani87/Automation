@@ -109,9 +109,10 @@ def split_into_shorts(video_path, chunk_length=60, output_folder="shorts"):
                 color="white",
                 stroke_color="black",
                 stroke_width=2,
+                margin=(10, 10),
             )
             .with_duration(chunk.duration)
-            .with_position(("center", "top"))
+            .with_position(("center", 30))
         )
 
         final_chunk = CompositeVideoClip([chunk, watermark])
