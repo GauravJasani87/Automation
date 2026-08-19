@@ -2,8 +2,17 @@ import os
 import math
 import platform
 import shutil
+import numpy as np
+from PIL import Image, ImageFont
+from pilmoji import Pilmoji
 from yt_dlp import YoutubeDL
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy import VideoFileClip, TextClip, CompositeVideoClip, ImageClip
+
+
+# ---- Customize your emoji watermark here ----
+EMOJI = "🔥🎬😊"
+EMOJI_SIZE = 90            # pixel size of each emoji glyph
+EMOJI_BOTTOM_MARGIN = 60   # distance from the bottom edge of the video
 
 
 def configure_ffmpeg():
@@ -51,8 +60,6 @@ def get_font_path():
     """
     candidates = []
 
-    # Termux sets a $PREFIX env var pointing inside com.termux -- most
-    # reliable way to detect we're running on an Android/Termux device.
     is_termux = "com.termux" in os.environ.get("PREFIX", "")
     system = platform.system()  # 'Windows', 'Darwin', or 'Linux'
 
@@ -83,8 +90,50 @@ def get_font_path():
     raise FileNotFoundError(f"No usable font found for watermark text. {hint}")
 
 
+def crop_to_vertical(clip, target_width=1080, target_height=1920):
+    """
+    Center-crop a clip to a 9:16 aspect ratio, then resize to the
+    target resolution (default 1080x1920 -- standard for Shorts/Reels/TikTok).
+    """
+    target_ratio = target_width / target_height  # 9:16 -> 0.5625
+    current_ratio = clip.w / clip.h
+
+    if current_ratio > target_ratio:
+        # Source is wider than 9:16 -> crop the sides
+        new_width = int(clip.h * target_ratio)
+        x1 = (clip.w - new_width) // 2
+        cropped = clip.cropped(x1=x1, y1=0, x2=x1 + new_width, y2=clip.h)
+    else:
+        # Source is taller/narrower than 9:16 -> crop top/bottom
+        new_height = int(clip.w / target_ratio)
+        y1 = (clip.h - new_height) // 2
+        cropped = clip.cropped(x1=0, y1=y1, x2=clip.w, y2=y1 + new_height)
+
+    return cropped.resized(new_size=(target_width, target_height))
+
+
+def make_emoji_clip(emoji_string, duration, font_path, size=EMOJI_SIZE):
+    """
+    Render one or more colored emojis (side by side) as a transparent image
+    using Pilmoji, then wrap it as a moviepy ImageClip so it can be
+    composited onto the video.
+    """
+    num_emojis = len(emoji_string)
+    canvas_width = (size * num_emojis) + 40   # room for all emojis + padding
+    canvas_height = size + 20
+
+    font = ImageFont.truetype(font_path, size)
+    image = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
+
+    with Pilmoji(image) as pilmoji:
+        pilmoji.text((10, 10), emoji_string, (0, 0, 0, 0), font)
+
+    return ImageClip(np.array(image), transparent=True).with_duration(duration)
+
+
 def split_into_shorts(video_path, chunk_length=60, output_folder="shorts"):
-    """Split a video into chunks of chunk_length seconds each, with a 'Part X' watermark."""
+    """Split a video into chunks of chunk_length seconds each, with a 'Part X'
+    text watermark at the top and an emoji watermark at the bottom."""
     os.makedirs(output_folder, exist_ok=True)
 
     clip = VideoFileClip(video_path)
@@ -99,6 +148,7 @@ def split_into_shorts(video_path, chunk_length=60, output_folder="shorts"):
         start = i * chunk_length
         end = min((i + 1) * chunk_length, total_duration)
         chunk = clip.subclipped(start, end)
+        chunk = crop_to_vertical(chunk)  # force 9:16 vertical format
 
         watermark_text = f"Part {i+1}"
         watermark = (
@@ -115,7 +165,16 @@ def split_into_shorts(video_path, chunk_length=60, output_folder="shorts"):
             .with_position(("center", 30))
         )
 
-        final_chunk = CompositeVideoClip([chunk, watermark])
+        try:
+            emoji_clip = make_emoji_clip(EMOJI, chunk.duration, font_path)
+            emoji_y = chunk.h - emoji_clip.h - EMOJI_BOTTOM_MARGIN
+            emoji_clip = emoji_clip.with_position(("center", emoji_y))
+            layers = [chunk, watermark, emoji_clip]
+        except Exception as e:
+            print(f"Warning: could not render emoji ({e}). Skipping emoji overlay.")
+            layers = [chunk, watermark]
+
+        final_chunk = CompositeVideoClip(layers)
 
         output_file = os.path.join(output_folder, f"short_{i+1}.mp4")
         final_chunk.write_videofile(output_file, codec="libx264", audio_codec="aac")
