@@ -93,18 +93,27 @@ def get_font_path():
 def make_emoji_clip(emoji_string, duration, font_path, size=EMOJI_SIZE):
     """
     Render one or more colored emojis (side by side) as a transparent image
-    using Pilmoji, then wrap it as a moviepy ImageClip so it can be
-    composited onto the video.
+    using Pilmoji, then auto-crop to the actual visible content so nothing
+    gets clipped, and wrap it as a moviepy ImageClip.
     """
     num_emojis = len(emoji_string)
-    canvas_width = (size * num_emojis) + 40   # room for all emojis + padding
-    canvas_height = size + 20
+    canvas_width = (size * num_emojis) + 60
+    canvas_height = size * 2  # generous space; we'll crop to the real size after
+
+    pad_x = 20
+    pad_y = size // 2  # push drawing down so the top of the glyph isn't clipped
 
     font = ImageFont.truetype(font_path, size)
     image = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
 
     with Pilmoji(image) as pilmoji:
-        pilmoji.text((10, 10), emoji_string, (0, 0, 0, 0), font)
+        pilmoji.text((pad_x, pad_y), emoji_string, (0, 0, 0, 0), font)
+
+    # Auto-crop to the actual rendered emoji bounding box -- this removes
+    # empty transparent space and guarantees nothing is cut off.
+    bbox = image.getbbox()
+    if bbox:
+        image = image.crop(bbox)
 
     return ImageClip(np.array(image), transparent=True).with_duration(duration)
 
