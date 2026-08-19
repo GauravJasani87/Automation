@@ -90,28 +90,6 @@ def get_font_path():
     raise FileNotFoundError(f"No usable font found for watermark text. {hint}")
 
 
-def crop_to_vertical(clip, target_width=1080, target_height=1920):
-    """
-    Center-crop a clip to a 9:16 aspect ratio, then resize to the
-    target resolution (default 1080x1920 -- standard for Shorts/Reels/TikTok).
-    """
-    target_ratio = target_width / target_height  # 9:16 -> 0.5625
-    current_ratio = clip.w / clip.h
-
-    if current_ratio > target_ratio:
-        # Source is wider than 9:16 -> crop the sides
-        new_width = int(clip.h * target_ratio)
-        x1 = (clip.w - new_width) // 2
-        cropped = clip.cropped(x1=x1, y1=0, x2=x1 + new_width, y2=clip.h)
-    else:
-        # Source is taller/narrower than 9:16 -> crop top/bottom
-        new_height = int(clip.w / target_ratio)
-        y1 = (clip.h - new_height) // 2
-        cropped = clip.cropped(x1=0, y1=y1, x2=clip.w, y2=y1 + new_height)
-
-    return cropped.resized(new_size=(target_width, target_height))
-
-
 def make_emoji_clip(emoji_string, duration, font_path, size=EMOJI_SIZE):
     """
     Render one or more colored emojis (side by side) as a transparent image
@@ -148,7 +126,6 @@ def split_into_shorts(video_path, chunk_length=60, output_folder="shorts"):
         start = i * chunk_length
         end = min((i + 1) * chunk_length, total_duration)
         chunk = clip.subclipped(start, end)
-        chunk = crop_to_vertical(chunk)  # force 9:16 vertical format
 
         watermark_text = f"Part {i+1}"
         watermark = (
