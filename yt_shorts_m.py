@@ -1,10 +1,33 @@
 import os
 import math
 import platform
-import imageio_ffmpeg
-os.environ["IMAGEIO_FFMPEG_EXE"] = imageio_ffmpeg.get_ffmpeg_exe()
+import shutil
 from yt_dlp import YoutubeDL
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip
+
+
+def configure_ffmpeg():
+    """
+    On Termux, imageio-ffmpeg's bundled binary isn't built for Android,
+    so we point moviepy/imageio at Termux's native system ffmpeg instead.
+    On other platforms (Windows/Mac/Linux desktop), fall back to the
+    bundled binary from imageio_ffmpeg as before.
+    """
+    is_termux = "com.termux" in os.environ.get("PREFIX", "")
+
+    if is_termux:
+        system_ffmpeg = shutil.which("ffmpeg")
+        if not system_ffmpeg:
+            raise RuntimeError(
+                "ffmpeg not found. On Termux, run: pkg install ffmpeg"
+            )
+        os.environ["IMAGEIO_FFMPEG_EXE"] = system_ffmpeg
+    else:
+        import imageio_ffmpeg
+        os.environ["IMAGEIO_FFMPEG_EXE"] = imageio_ffmpeg.get_ffmpeg_exe()
+
+
+configure_ffmpeg()
 
 
 def download_video(url, output_folder="downloads"):
